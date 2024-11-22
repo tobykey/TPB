@@ -1,0 +1,6 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <!-- 편지 배경 (단순한 종이) -->
+    <rect x="10" y="20" width="80" height="60" fill="#F5F5DC"/>
+    <!-- 살짝 입체감을 위한 그림자 효과 -->
+    <rect x="12" y="22" width="80" height="60" fill="#E5E5D0" opacity="0.5"/>
+</svg>
