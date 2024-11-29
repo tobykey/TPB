@@ -1,4 +1,6 @@
 # import Tooltip
+import random
+
 import pygame
 import time
 import sys
@@ -353,6 +355,7 @@ image_scene2 = pygame.image.load("resource_pack/image/5호관 복도2.jpg")
 image_scene3 = pygame.image.load("resource_pack/image/기자재실.jpg")
 image_news = pygame.image.load("resource_pack/image/5호관 사고.jpg")
 image_scene4 = pygame.image.load("resource_pack/image/5호관 교실.jpg")
+image_scene5 = pygame.image.load("resource_pack/image/5호관 무섭.jpg")
 
 image_main = pygame.image.load("resource_pack/image/권도현.png")
 
@@ -368,12 +371,16 @@ image_exit_click = pygame.image.load("resource_pack/image/종료_click.png")
 image_battery = pygame.image.load("resource_pack/image/건전지.png")
 image_key = pygame.image.load("resource_pack/image/열쇠.png")
 
+image_lock = pygame.image.load("resource_pack/image/9버튼 자물쇠.png")
+image_glow = pygame.image.load("resource_pack/image/형광부분.png")
+
 #BGM 로드
 BGM = pygame.mixer.Sound("resource_pack/BGM.mp3")
 # 효과음 로드
 open_sound = pygame.mixer.Sound("resource_pack/effect/문여는소리.mp3")  # 사용할 사운드 파일 경로
 click_sound = pygame.mixer.Sound("resource_pack/effect/클릭.mp3")
 knock_sound = pygame.mixer.Sound("resource_pack/effect/노크.mp3")
+lock_sound = pygame.mixer.Sound("resource_pack/effect/공포멀어지는소리.mp3")
 
 size_1 = 0.1
 size_2 = 0.2
@@ -453,6 +460,12 @@ ui_inventory = pygame.transform.scale(ui_inventory,(int(size_inventory_width),in
 ui_right = pygame.transform.scale(ui_right,(int(size_right_width),int(size_right_height)))
 ui_left = pygame.transform.scale(ui_left,(int(size_left_width),int(size_left_height)))
 
+image_lock = pygame.transform.scale(image_lock,
+    (int(image_lock.get_width() * 0.5), int(image_lock.get_height() * 0.5)))
+
+image_glow = pygame.transform.scale(image_glow,
+    (int(image_glow.get_width() * 0.5), int(image_glow.get_height() * 0.5)))
+
 x_pos_logo = 204
 y_pos_logo = 26
 
@@ -513,6 +526,15 @@ screen6_initialized = False
 classroom_visited = False  # 교실 방문 가능 상태 체크
 return_message_shown = False
 inventory_open = False
+show_inventory_ui = False
+show_left_arrow = True
+ready_for_dark_effect = False
+screen7_initialized = False
+uv_light_activated = False  # UV라이트 활성화 상태
+battery_used = False  # 건전지 사용 여부
+uv_light_selected = False  # UV 라이트가 선택되었는지
+uv_light_powered = False  # UV 라이트에 배터리가 장착되었는지
+lock_zoomed = False  # 자물쇠 줌인 상태
 
 mysterious_letter_puzzle = [
     ['연', '마', '카', '타', '파', '하', '차', '바', '나', '다'],
@@ -533,6 +555,12 @@ input_active = False
 user_text = ""
 letter = Item("resource_pack/image/편지.png", 300, 200, 100, 100, "의문의 편지")
 
+scene_buttons = [
+   {'rect': pygame.Rect(10 + i*60, 10, 50, 30),
+    'color': (random.randint(50,255), random.randint(50,255), random.randint(50,255)),
+    'text': str(i+1),
+    'screen': i+1} for i in range(7)  # 1~7번 씬
+]
 
 
 last_click_time = 0  # 마지막 클릭 시간 추적
@@ -559,6 +587,68 @@ def can_click():
         return True
     return False
 
+# 인벤토리 시스템을 함수로 분리
+def draw_inventory_system(background, mouse_pos, mouse_x, mouse_y):
+    is_hovering = False
+
+    # 인벤토리 아이콘 그리기
+    background.blit(ui_inventory, (x_pos_inventory, y_pos_inventory))
+
+    # 인벤토리 아이콘 호버 처리
+    inventory_rect = pygame.Rect(x_pos_inventory, y_pos_inventory,
+                                 size_inventory_width, size_inventory_height)
+    if inventory_rect.collidepoint(mouse_pos):
+        is_hovering = True
+        tooltip.draw(background, "인벤토리 열기/닫기", (mouse_x + 10, mouse_y))
+
+    # 인벤토리 창이 열려있을 때
+    if inventory_open:
+        # 인벤토리 배경
+        inventory_bg = pygame.Surface((400, 300), pygame.SRCALPHA)
+        inventory_bg.fill((0, 0, 0, 200))
+        background.blit(inventory_bg, (450, 100))
+
+        # 인벤토리 제목
+        font = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 24)
+        title = font.render("인벤토리", True, (255, 255, 255))
+        background.blit(title, (460, 110))
+
+        # 인벤토리 슬롯
+        for i in range(8):
+            slot_x = 460 + (i % 4) * 90
+            slot_y = 150 + (i // 4) * 90
+            pygame.draw.rect(background, (50, 50, 50), (slot_x, slot_y, 80, 80))
+            pygame.draw.rect(background, (100, 100, 100), (slot_x, slot_y, 80, 80), 2)
+
+            if i < len(inventory):
+                scaled_item = pygame.transform.scale(inventory[i].image, (70, 70))
+                background.blit(scaled_item, (slot_x + 5, slot_y + 5))
+                if pygame.Rect(slot_x, slot_y, 80, 80).collidepoint(mouse_pos):
+                    tooltip.draw(background, inventory[i].name, (mouse_x + 10, mouse_y))
+
+        # 닫기 버튼
+        close_btn = pygame.Rect(810, 110, 30, 30)
+        pygame.draw.rect(background, (150, 0, 0), close_btn)
+        if close_btn.collidepoint(mouse_pos):
+            is_hovering = True
+            tooltip.draw(background, "닫기", (mouse_x + 10, mouse_y))
+
+    return is_hovering
+
+
+# 인벤토리 이벤트 처리 함수
+def handle_inventory_events(event):
+    global inventory_open
+    if event.type == pygame.MOUSEBUTTONDOWN and can_click():
+        # 인벤토리 아이콘 클릭
+        if pygame.Rect(x_pos_inventory, y_pos_inventory,
+                       size_inventory_width, size_inventory_height).collidepoint(event.pos):
+            inventory_open = not inventory_open
+            click_sound.play()
+        # 닫기 버튼 클릭
+        elif inventory_open and pygame.Rect(810, 110, 30, 30).collidepoint(event.pos):
+            inventory_open = False
+            click_sound.play()
 while play:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -585,9 +675,51 @@ while play:
     is_hovering = False
 
     if current_screen == 1:
-        background.blit(image_bg, (0,0))
+        background.blit(image_bg, (0, 0))
         background.blit(image_logo, (x_pos_logo, y_pos_logo))
         background.blit(image_team, (x_pos_team, y_pos_team))
+
+        # 씬 선택 버튼 그리기
+        for btn in scene_buttons:
+            pygame.draw.rect(background, btn['color'], btn['rect'])
+            text = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 20).render(btn['text'], True, (255, 255, 255))
+            text_rect = text.get_rect(center=btn['rect'].center)
+            background.blit(text, text_rect)
+
+            # 버튼 호버 효과
+            if btn['rect'].collidepoint(mouse_pos):
+                is_hovering = True
+                tooltip.draw(background, f"씬 {btn['text']}로 이동", (mouse_x + 10, mouse_y))
+                if mouse_buttons[0] and can_click():
+                    # 각 씬으로 이동하기 전 필요한 준비 작업
+                    if btn['screen'] >= 2:
+                        GAME_STATE['intro'] = True
+                        loading_start_time = time.time()
+                    if btn['screen'] >= 3:
+                        news_initialized = True
+                    if btn['screen'] >= 4:
+                        screen3_initialized = True
+                    if btn['screen'] >= 5:
+                        screen4_initialized = True
+                        classroom_visited = True
+                    if btn['screen'] >= 6:
+                        screen5_initialized = True
+                        for item in items:  # 모든 아이템 획득 처리
+                            item.collected = True
+                            if item not in inventory:
+                                inventory.append(item)
+                    if btn['screen'] == 7:
+                        screen6_initialized = True
+                        puzzle_solved = True
+                        ready_for_dark_effect = True
+                        show_left_arrow = False
+                        # UV 라이트 관련 상태도 설정
+                        uv_light_selected = False
+                        uv_light_powered = False
+                        lock_zoomed = False
+
+                    current_screen = btn['screen']
+                    click_sound.play()
         # 시작버튼 마우스오버 및 클릭시 이미지 변경
         if (x_pos_start <= mouse_x <= x_pos_start + size_start_width and
                 y_pos_start <= mouse_y <= y_pos_start + size_start_height):
@@ -688,8 +820,10 @@ while play:
 
 
 
+
     elif current_screen == 4:
         background.blit(image_scene2, (0, 0))
+        show_inventory_ui = True  # 인벤토리 표시 활성화
         # 처음 진입시 대사 설정 (최초 1회)
         if not screen4_initialized:
             story_text_system.set_text("선배가 사고를 당했던 5호관...", "권도현")
@@ -702,18 +836,12 @@ while play:
             story_text_system.add_text_to_queue("이제 다른 곳도 둘러보자.", "권도현")
             return_message_shown = True
         # UI 요소 그리기
-        background.blit(ui_inventory, (x_pos_inventory, y_pos_inventory))
         background.blit(ui_right, (x_pos_right, y_pos_right))
         background.blit(ui_left, (x_pos_left, y_pos_left))
-        # 인벤토리 호버 처리
-        if (x_pos_inventory <= mouse_x <= x_pos_inventory + size_inventory_width and
-                y_pos_inventory <= mouse_y <= y_pos_inventory + size_inventory_height):
-            background.blit(overlay, (450, 100))
-            tooltip.draw(background, "인벤토리", (mouse_x + 10, mouse_y))
-            is_hovering = True
-            # 인벤토리 아이템 표시
-            for i, item in enumerate(inventory):
-                background.blit(item.image, (450 + i * 100, 100))
+        # 인벤토리 시스템 적용
+        if show_inventory_ui:
+            inventory_hovering = draw_inventory_system(background, mouse_pos, mouse_x, mouse_y)
+            is_hovering = is_hovering or inventory_hovering
         # 화살표 호버 및 클릭 처리 - 대화 중에는 비활성화
         if not story_text_system.is_visible:
             # 오른쪽 화살표 호버 및 클릭 처리
@@ -724,6 +852,7 @@ while play:
                 if mouse_buttons[0]:
                     click_sound.play()
                     current_screen = 5
+
             # 왼쪽 화살표 호버 및 클릭 처리
             left_arrow_rect = pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height)
             if left_arrow_rect.collidepoint(mouse_x, mouse_y):
@@ -743,73 +872,39 @@ while play:
             if (pygame.Rect(x_pos_right, y_pos_right, size_right_width, size_right_height).collidepoint(mouse_x,
                                                                                                         mouse_y) or
                     pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height).collidepoint(mouse_x,
-                                                                                                        mouse_y)):
+                                                                                                       mouse_y)):
                 is_hovering = True
                 tooltip.draw(background, "대화 완료 후 이동 가능", (mouse_x + 10, mouse_y))
+        # 이벤트 처리
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                play = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # 스토리 텍스트 클릭 처리를 먼저
+                story_text_system.handle_click(event.pos)
+            # 인벤토리 이벤트 처리는 그 다음에
+            if show_inventory_ui:  # elif 대신 if 사용
+                handle_inventory_events(event)
         # 스토리 텍스트 업데이트
         story_text_system.update(background)
-        # 대화 클릭 처리
-        for event in pygame.event.get():
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                story_text_system.handle_click(event.pos)
-
+        custom_cursor.update(is_hovering)
 
     elif current_screen == 5:
-        # 1. 배경 및 기본 UI 그리기
         background.blit(image_scene3, (0, 0))
-        background.blit(ui_inventory, (x_pos_inventory, y_pos_inventory))
-        background.blit(ui_left, (x_pos_left, y_pos_left))
-
-        # 2. 첫 진입 시 대사 설정
+        show_inventory_ui = True
+        # 첫 진입 시 대사 설정
         if not screen5_initialized:
             story_text_system.set_text("기자재실... 혹시 여기서 단서를 찾을 수 있을까?", "권도현")
             story_text_system.add_text_to_queue("어? 저기 뭔가 있는 것 같은데...", "권도현")
             story_text_system.add_text_to_queue("UV 라이트와 건전지... 그리고 열쇠까지. 이걸로 뭔가 알아낼 수 있을지도.", "권도현")
             screen5_initialized = True
-
-        # 3. 이벤트 처리
-        is_hovering = False
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                play = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and can_click():
-                # 인벤토리 관련 클릭 처리
-                if pygame.Rect(x_pos_inventory, y_pos_inventory, size_inventory_width,
-                                size_inventory_height).collidepoint(mouse_pos):
-                    inventory_open = not inventory_open
-                    click_sound.play()
-                elif inventory_open and pygame.Rect(810, 110, 30, 30).collidepoint(mouse_pos):
-                    inventory_open = False
-                    click_sound.play()
-
-                # 뒤로가기 버튼 클릭
-                elif (not story_text_system.is_visible and
-                        pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height).collidepoint(mouse_pos)):
-                    # 모든 아이템이 수집되었는지 확인
-                    all_items_collected = all(item.collected for item in items)
-                    if all_items_collected:
-                        current_screen = 4
-                        classroom_visited = True  # 교실 방문 가능하도록 설정
-                        click_sound.play()
-                        # 복도로 돌아왔을 때의 대사 설정을 위한 플래그
-                        screen4_return = True
-                    else:
-                        story_text_system.set_text("아직 수집하지 못한 아이템이 있는 것 같아.", "권도현")
-                        click_sound.play()
-
-
-                # 아이템 획득 클릭
-                elif not story_text_system.is_visible:
-                    for item in items:
-                        if (not item.collected and
-                                pygame.Rect(item.x, item.y, item.width, item.height).collidepoint(mouse_pos)):
-                            item.collected = True
-                            inventory.append(item)
-                            item_acquisition_sound.play()
-                            item_acquisition_message.show(item.name)
-                # 스토리 텍스트 클릭
-                story_text_system.handle_click(mouse_pos)
-        # 4. 아이템 표시 및 상호작용
+        # UI 요소 그리기
+        background.blit(ui_left, (x_pos_left, y_pos_left))
+        # 인벤토리 시스템 적용
+        if show_inventory_ui:
+            inventory_hovering = draw_inventory_system(background, mouse_pos, mouse_x, mouse_y)
+            is_hovering = is_hovering or inventory_hovering
+        # 아이템 드로잉 및 상호작용
         if not story_text_system.is_visible:
             # 대화가 없을 때 아이템 표시
             for item in items:
@@ -828,53 +923,51 @@ while play:
                     s.fill((0, 0, 0, 128))
                     background.blit(s, (item.x, item.y))
 
-        # 5. 인벤토리 UI 표시
-        if inventory_open:
-            # 인벤토리 배경
-            inventory_bg = pygame.Surface((400, 300), pygame.SRCALPHA)
-            inventory_bg.fill((0, 0, 0, 200))
-            background.blit(inventory_bg, (450, 100))
+        # 이벤트 처리
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                play = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # 스토리 텍스트 클릭 처리를 가장 먼저
+                story_text_system.handle_click(event.pos)
 
-            # 인벤토리 제목
-            font = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 24)
-            title = font.render("인벤토리", True, (255, 255, 255))
-            background.blit(title, (460, 110))
+                # 대화가 진행 중이 아닐 때만 다른 상호작용 가능
+                if not story_text_system.is_visible:
+                    # 뒤로가기 버튼 클릭
+                    if pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height).collidepoint(event.pos):
+                        # 모든 아이템이 수집되었는지 확인
+                        all_items_collected = all(item.collected for item in items)
+                        if all_items_collected:
+                            current_screen = 4
+                            classroom_visited = True
+                            click_sound.play()
+                        else:
+                            story_text_system.set_text("아직 수집하지 못한 아이템이 있는 것 같아.", "권도현")
+                            click_sound.play()
 
-            # 인벤토리 슬롯
-            for i in range(8):
-                slot_x = 460 + (i % 4) * 90
-                slot_y = 150 + (i // 4) * 90
-                pygame.draw.rect(background, (50, 50, 50), (slot_x, slot_y, 80, 80))
-                pygame.draw.rect(background, (100, 100, 100), (slot_x, slot_y, 80, 80), 2)
-                if i < len(inventory):
-                    scaled_item = pygame.transform.scale(inventory[i].image, (70, 70))
-                    background.blit(scaled_item, (slot_x + 5, slot_y + 5))
-                    if pygame.Rect(slot_x, slot_y, 80, 80).collidepoint(mouse_pos):
-                        tooltip.draw(background, inventory[i].name, (mouse_x + 10, mouse_y))
+                    # 아이템 획득 클릭
+                    for item in items:
+                        if (not item.collected and
+                                pygame.Rect(item.x, item.y, item.width, item.height).collidepoint(event.pos)):
+                            item.collected = True
+                            inventory.append(item)
+                            item_acquisition_sound.play()
+                            item_acquisition_message.show(item.name)
 
-            # 닫기 버튼
-            close_btn = pygame.Rect(810, 110, 30, 30)
-            pygame.draw.rect(background, (150, 0, 0), close_btn)
-            if close_btn.collidepoint(mouse_pos):
-                is_hovering = True
-                tooltip.draw(background, "닫기", (mouse_x + 10, mouse_y))
+            # 인벤토리 이벤트 처리는 별도로
+            if show_inventory_ui:
+                handle_inventory_events(event)
 
-        # 6. UI 호버 효과
-        # 인벤토리 아이콘 호버
-        if pygame.Rect(x_pos_inventory, y_pos_inventory, size_inventory_width, size_inventory_height).collidepoint(
-                mouse_pos):
-            is_hovering = True
-            tooltip.draw(background, "인벤토리 열기/닫기", (mouse_x + 10, mouse_y))
-
-        # 뒤로가기 버튼 호버
+        # 왼쪽 화살표(뒤로가기) 호버
         if pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height).collidepoint(mouse_pos):
             is_hovering = True
             if story_text_system.is_visible:
                 tooltip.draw(background, "대화 완료 후 이동 가능", (mouse_x + 10, mouse_y))
+
             else:
                 tooltip.draw(background, "복도로 돌아가기", (mouse_x + 10, mouse_y))
 
-        # 7. 시스템 업데이트
+        # 시스템 업데이트
         story_text_system.update(background)
         item_acquisition_message.update(background, mouse_pos)
         custom_cursor.update(is_hovering)
@@ -884,96 +977,254 @@ while play:
     elif current_screen == 6:
         # 1. 배경 및 기본 UI 그리기
         background.blit(image_scene4, (0, 0))
-        background.blit(ui_inventory, (x_pos_inventory, y_pos_inventory))
-        background.blit(ui_left, (x_pos_left, y_pos_left))
+        if show_left_arrow:
+            background.blit(ui_left, (x_pos_left, y_pos_left))
+        show_inventory_ui = True
+        # 버튼과 폰트 정의를 앞부분으로 이동
+        solve_btn = pygame.Rect(300, 480, 200, 40)
+        font = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 20)
+
         # 2. 첫 진입 시 대사 설정
         if not screen6_initialized:
             story_text_system.set_text("교실이다... 이곳에서 무슨 일이 있었던 걸까?", "권도현")
             story_text_system.add_text_to_queue("어? 저기 책상 위에 뭔가 있는데...", "권도현")
             story_text_system.add_text_to_queue("의문의 편지...? 글자가 이상하게 배열되어 있어.", "권도현")
             screen6_initialized = True
-        # 버튼 정의를 조건문 밖으로 이동
-        solve_btn = pygame.Rect(300, 480, 200, 40)
-        font = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 20)
-        # 3. 퍼즐 표시 - 대화가 끝난 후에만 표시
+        # 3. 인벤토리 시스템 적용
+        if show_inventory_ui:
+            inventory_hovering = draw_inventory_system(background, mouse_pos, mouse_x, mouse_y)
+            is_hovering = is_hovering or inventory_hovering
+
+        # 4. 어두워짐 효과 체크
+        if puzzle_solved and story_text_system.current_text == "이제 나가야겠어." and story_text_system.is_text_complete and not ready_for_dark_effect:
+            ready_for_dark_effect = True
+            show_left_arrow = False  # 화살표 숨기기
+            BGM.stop()  # BGM 일시 정지
+            lock_sound.play()  # 효과음 재생
+            lock_sound_start_time = time.time()  # BGM 재시작 타이머 설정
+
+            # 어두워지는 효과를 위한 오버레이
+            darkness_overlay = pygame.Surface((size_bg_width, size_bg_height))
+            darkness_overlay.fill((0, 0, 0))
+            darkness_overlay.set_alpha(100)
+            background.blit(darkness_overlay, (0, 0))
+
+            # 다음 대사 추가
+            story_text_system.add_text_to_queue("...", "")
+            story_text_system.add_text_to_queue("어..? 갑자기 왜 이러지..?", "권도현")
+            story_text_system.add_text_to_queue("문이... 문이 잠겼어!", "권도현")
+
+        # 별도의 대사 체크 부분 추가
+        if story_text_system.current_text == "문이... 문이 잠겼어!" and story_text_system.is_text_complete and ready_for_dark_effect:
+            current_screen = 7
+
+        # 5. 퍼즐 관련 UI
         if not puzzle_solved and not story_text_system.is_visible:
-            # 배경 패널 그리기
-            panel_width = 300
-            panel_height = 300
+            # 퍼즐 배경과 격자 그리기
+            panel_width, panel_height = 300, 300
             cell_size = 30
-            start_x = 250
-            start_y = 150
+            start_x, start_y = 250, 150
+
             # 패널 배경
             pygame.draw.rect(background, (245, 245, 220), (start_x, start_y, panel_width, panel_height))
+
             # 격자 그리기
             for i in range(11):
                 pygame.draw.line(background, (0, 0, 0),
-                        (start_x + i * cell_size, start_y),
-                        (start_x + i * cell_size, start_y + panel_height))
+                                 (start_x + i * cell_size, start_y),
+                                 (start_x + i * cell_size, start_y + panel_height))
                 pygame.draw.line(background, (0, 0, 0),
-                        (start_x, start_y + i * cell_size),
-                        (start_x + panel_width, start_y + i * cell_size))
+                                 (start_x, start_y + i * cell_size),
+                                 (start_x + panel_width, start_y + i * cell_size))
+
             # 글자 그리기
+            font = pygame.font.Font("resource_pack/font/이순신Bold.ttf", 20)
             for i in range(10):
                 for j in range(10):
                     text = font.render(mysterious_letter_puzzle[i][j], True, (0, 0, 0))
                     text_rect = text.get_rect(center=(start_x + j * cell_size + cell_size / 2,
-                                                    start_y + i * cell_size + cell_size / 2))
+                                                      start_y + i * cell_size + cell_size / 2))
                     background.blit(text, text_rect)
-            # 입력 버튼 그리기
+            # 정답 입력 버튼
+            solve_btn = pygame.Rect(300, 480, 200, 40)
             pygame.draw.rect(background, (100, 100, 100), solve_btn)
             solve_text = font.render("정답 입력하기", True, (255, 255, 255))
             solve_text_rect = solve_text.get_rect(center=(solve_btn.centerx, solve_btn.centery))
             background.blit(solve_text, solve_text_rect)
-            # 입력 필드 (버튼 아래에 위치)
+
+            # 입력 필드
             if input_active:
-                # 입력 안내 메시지
-                guide = font.render("정답을 입력하세요 (Enter로 확인)", True, (0, 0, 0))
+                guide = font.render("정답을 입력하세요 (Enter로 확인)", True, (255, 255, 255))
                 guide_rect = guide.get_rect(center=(400, 540))
                 background.blit(guide, guide_rect)
-                # 입력 필드 배경
                 input_rect = pygame.Rect(250, 560, 300, 40)
                 pygame.draw.rect(background, (255, 255, 255), input_rect)
                 pygame.draw.rect(background, (100, 100, 100), input_rect, 2)
-                # 입력 텍스트
                 text_surface = font.render(user_text, True, (0, 0, 0))
                 text_rect = text_surface.get_rect(midleft=(input_rect.left + 10, input_rect.centery))
                 background.blit(text_surface, text_rect)
-        # 4. 이벤트 처리
+
+        # 6. 이벤트 처리
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 play = False
-            # 마우스 클릭 처리
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # 대화 시스템 클릭 처리
+                # 스토리 텍스트 클릭 처리
                 story_text_system.handle_click(event.pos)
-                # 버튼 클릭 처리 (대화가 끝난 후에만)
-                if not story_text_system.is_visible:
+                # 정답 입력 버튼 클릭
+                if not story_text_system.is_visible and not puzzle_solved:
                     if solve_btn.collidepoint(event.pos) and can_click():
                         input_active = True
-            # 한글 입력 처리
-            elif event.type == pygame.TEXTINPUT and input_active:
-                if len(user_text) < 20:  # 최대 길이 제한
+
+            # 인벤토리 이벤트 처리
+            if show_inventory_ui:
+                handle_inventory_events(event)
+
+            # 텍스트 입력 처리
+            if event.type == pygame.TEXTINPUT and input_active:
+                if len(user_text) < 20:
                     user_text += event.text
+
             elif event.type == pygame.KEYDOWN and input_active:
                 if event.key == pygame.K_RETURN:
                     if user_text == answer:
                         puzzle_solved = True
                         input_active = False
                         story_text_system.set_text("이건...! 연극장으로 가라는 메시지야!", "권도현")
+                        story_text_system.add_text_to_queue("의문의 편지를 획득했다.", "권도현")
+                        story_text_system.add_text_to_queue("이제 나가야겠어.", "권도현")
                         letter.collected = False
                         items.append(letter)
+                        item_acquisition_sound.play()
+                        item_acquisition_message.show("의문의 편지")
                     else:
                         story_text_system.set_text("뭔가 잘못 읽은 것 같아...", "권도현")
                     user_text = ""
                 elif event.key == pygame.K_BACKSPACE:
                     user_text = user_text[:-1]
-        # 5. 스토리 텍스트 시스템 업데이트
-        story_text_system.update(background)
-        # 6. 커서 업데이트
-        if solve_btn.collidepoint(mouse_pos):
+
+        # 7. BGM 재시작 체크
+        if puzzle_solved and 'lock_sound_start_time' in locals():
+            if time.time() - lock_sound_start_time >= 5:
+                if not BGM.get_num_channels():
+                    BGM.play(-1)
+                    del lock_sound_start_time
+
+        # 8. 왼쪽 화살표 호버 처리
+        if show_left_arrow and pygame.Rect(x_pos_left, y_pos_left, size_left_width, size_left_height).collidepoint(
+                mouse_pos):
             is_hovering = True
+            if story_text_system.is_visible:
+                tooltip.draw(background, "대화 완료 후 이동 가능", (mouse_x + 10, mouse_y))
+            elif puzzle_solved:
+                tooltip.draw(background, "문이 잠겼다", (mouse_x + 10, mouse_y))
+                if mouse_buttons[0] and can_click():
+                    click_sound.play()
+                    story_text_system.set_text("문이 잠겼어... 다른 방법을 찾아보자.", "권도현")
+            else:
+                tooltip.draw(background, "복도로 돌아가기", (mouse_x + 10, mouse_y))
+                if mouse_buttons[0] and can_click():
+                    click_sound.play()
+                    current_screen = 4
+        # 9. 시스템 업데이트
+        story_text_system.update(background)
+        custom_cursor.update(is_hovering)
+
+    # current_screen == 7 추가
+    elif current_screen == 7:
+        # 1. 배경 및 UI 그리기
+        background.blit(image_scene5, (0, 0))
+        show_inventory_ui = True
+        if not lock_zoomed:
+            # 일반 상태 - 작은 자물쇠 표시
+            background.blit(image_lock, (450, 500))
+            if uv_light_powered:
+                # 더 큰 옥색 동그라미와 투명도 조정
+                circle_surface = pygame.Surface((200, 200), pygame.SRCALPHA)  # 200x200으로 크기 증가
+                pygame.draw.circle(circle_surface, (0, 255, 255, 51), (100, 100), 100)  # 중심점과 반지름도 증가
+                background.blit(circle_surface, (mouse_pos[0] - 100, mouse_pos[1] - 100))
+
+                # 자물쇠 위에서 클릭 감지
+                lock_rect = pygame.Rect(450, 500, image_lock.get_width(), image_lock.get_height())
+                if lock_rect.collidepoint(mouse_pos):
+                    resized_glow = pygame.transform.scale(image_glow,(60,60))
+                    background.blit(resized_glow, (495, 574))
+                    print(f"일반 glow 크기: {resized_glow.get_width()}x{resized_glow.get_height()}, 위치: (500,600)")
+                    if mouse_buttons[0] and can_click():
+                        lock_zoomed = True
+                        click_sound.play()
+        else:
+            # 줌인 상태
+            # 자물쇠를 화면 중앙에 크게 표시
+            zoomed_lock = pygame.transform.scale(image_lock, (400, 400))
+            lock_x = (size_bg_width - zoomed_lock.get_width()) // 2
+            lock_y = (size_bg_height - zoomed_lock.get_height()) // 2
+            background.blit(zoomed_lock, (lock_x, lock_y))
+
+            if uv_light_powered:
+                circle_surface = pygame.Surface((300, 300), pygame.SRCALPHA)
+                pygame.draw.circle(circle_surface, (0, 255, 255, 51), (150, 150), 150)
+                background.blit(circle_surface, (mouse_pos[0] - 150, mouse_pos[1] - 150))
+
+                lock_rect = pygame.Rect(lock_x, lock_y, zoomed_lock.get_width(), zoomed_lock.get_height())
+                if lock_rect.collidepoint(mouse_pos):
+                    zoomed_glow = pygame.transform.scale(image_glow,(150,150))
+                    background.blit(zoomed_glow, (371,355))
+                    print(
+                        f"줌인된 glow 크기: {zoomed_glow.get_width()}x{zoomed_glow.get_height()}, 위치: 300,400")
+
+        # 2. 첫 진입 시 대사 설정
+        if not screen7_initialized:
+            story_text_system.set_text("이게 뭐지...? 갑자기 자물쇠가...", "권도현")
+            story_text_system.add_text_to_queue("어두워서 잘 안 보이는데... UV 라이트를 사용해볼까?", "권도현")
+            screen7_initialized = True
+
+        # 3. 인벤토리 상호작용 처리
+        if show_inventory_ui:
+            inventory_hovering = draw_inventory_system(background, mouse_pos, mouse_x, mouse_y)
+            is_hovering = is_hovering or inventory_hovering
+
+            if inventory_open:
+                for i, item in enumerate(inventory):
+                    slot_x = 460 + (i % 4) * 90
+                    slot_y = 150 + (i // 4) * 90
+                    item_rect = pygame.Rect(slot_x, slot_y, 80, 80)
+
+                    # 아이템 호버 시 설명
+                    if item_rect.collidepoint(mouse_pos):
+                        if item.name == "UV Light":
+                            tooltip.draw(background,
+                                         "켜진 UV Light" if uv_light_powered else "클릭하여 UV Light 선택",
+                                         (mouse_x + 10, mouse_y))
+                        elif item.name == "Battery" and uv_light_selected:
+                            tooltip.draw(background, "클릭하여 UV Light에 장착", (mouse_x + 10, mouse_y))
+                        else:
+                            tooltip.draw(background, item.name, (mouse_x + 10, mouse_y))
+
+                        # 클릭 처리
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            if item.name == "UV Light" and not uv_light_powered:
+                                uv_light_selected = not uv_light_selected  # 토글
+                                click_sound.play()
+                            elif item.name == "Battery" and uv_light_selected:
+                                uv_light_powered = True
+                                uv_light_selected = False
+                                # 배터리 제거
+                                inventory.remove(item)
+                                click_sound.play()
+                                story_text_system.set_text("UV 라이트에 건전지를 장착했다.", "권도현")
+
+        # 4. 이벤트 처리
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                play = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                story_text_system.handle_click(event.pos)
+            if show_inventory_ui:
+                handle_inventory_events(event)
+
+        # 5. 시스템 업데이트
+        story_text_system.update(background)
         custom_cursor.update(is_hovering)
 
     pygame.display.flip()
-    
